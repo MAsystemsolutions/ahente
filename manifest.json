@@ -1,0 +1,16 @@
+{
+  "name": "Ahente Portal",
+  "short_name": "Ahente",
+  "description": "MA System Solutions — portal para sa mga ahente ng Kwentoink at Puscart",
+  "start_url": "/ahente/",
+  "id": "/ahente/?app=ahente",
+  "scope": "/ahente/",
+  "display": "standalone",
+  "background_color": "#e8f6f2",
+  "theme_color": "#e8f6f2",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
