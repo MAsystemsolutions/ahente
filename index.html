@@ -136,7 +136,7 @@ async function api(action, body) {
   }
   return j;
 }
-const ERR = { WRONG_LOGIN: 'Mali ang ID o PIN.', LOCKED: 'Maraming maling subok. Subukan ulit after 15 minuto.', NAME_REQUIRED: 'Ilagay ang pangalan.', REFERRAL_NOT_FOUND: 'Walang tindahang may ganitong referral code.', WRONG_PIN: 'Mali ang lumang PIN.', BAD_PIN: 'Ang PIN ay 4–6 na numero.', ADMIN_ONLY: 'Admin lang ang pwede dito.', NOT_YOUR_STORE: 'Hindi mo ito tindahan.', STORE_NOT_FOUND: 'Hindi makita ang tindahan.' };
+const ERR = { WRONG_LOGIN: 'Mali ang ID o PIN.', LOCKED: 'Maraming maling subok. Subukan ulit after 15 minuto.', NAME_REQUIRED: 'Ilagay ang pangalan.', REFERRAL_NOT_FOUND: 'Walang tindahang may ganitong referral code.', WRONG_PIN: 'Mali ang lumang PIN.', BAD_PIN: 'Ang PIN ay 4–6 na numero.', ADMIN_ONLY: 'Admin lang ang pwede dito.', NOT_YOUR_STORE: 'Hindi mo ito tindahan.', STORE_NOT_FOUND: 'Hindi makita ang tindahan.', ALREADY_DONE: 'Na-asikaso na ito.', NOT_FOUND: 'Hindi makita.' };
 let toastT; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2800); }
 async function copy(t) { try { await navigator.clipboard.writeText(t); toast('Nakopya! I-paste sa Messenger 💬'); } catch (e) { msgSheet(t); } }
 async function share(t) { try { if (navigator.share) { await navigator.share({ text: t }); return; } } catch (e) { return; } copy(t); }
@@ -177,6 +177,7 @@ function stInfo(st) {
 }
 const needRenew = () => (D().stores || []).filter(x => stInfo(x).soon);
 const openReq = () => (D().requests || []).filter(r => r.status === 'open');
+const pendClaims = () => (D().claims || []).filter(c => c.status === 'pending');
 function earned(agentId) { return (D().payments || []).filter(p => p.agentId === agentId).reduce((a, p) => a + (Number(p.agentShare) || 0), 0); }
 function paidOut(agentId) { return (D().payouts || []).filter(p => p.agentId === agentId).reduce((a, p) => a + (Number(p.amount) || 0), 0); }
 function priceOf(plan, months) {
@@ -253,7 +254,7 @@ function start() {
 function go(v) { S.view = v; render(); window.scrollTo(0, 0); }
 function render() {
   $$('#navIn button').forEach(b => b.classList.toggle('on', b.dataset.v === S.view));
-  const n = needRenew().length + (isAdmin() ? openReq().length : 0);
+  const n = needRenew().length + (isAdmin() ? openReq().length + pendClaims().length : 0);
   const bn = $('#bellN'); bn.textContent = n > 9 ? '9+' : n; bn.classList.toggle('hidden', !n);
   $('#fab').classList.toggle('hidden', !(S.view === 'home' || S.view === 'stores'));
   if (!S.data) { $('#view').innerHTML = '<div class="loading"><div class="spin"></div>Kinukuha ang data…</div>'; return; }
@@ -277,7 +278,7 @@ function renewAlerts() {
     return '<div class="alert ' + (i.state === 'expired' ? 'red' : '') + '"><div class="e">' + (i.state === 'expired' ? '⛔' : '⏰') + '</div><div style="flex:1;min-width:0"><div class="t1">' + esc(st.name) + '</div>' +
       '<div class="t2">' + (i.state === 'expired' ? 'Natapos noong ' + pd(i.until) : (i.state === 'trial' ? 'Trial' : 'Bayad') + ' hanggang ' + pd(i.until) + ' (' + i.daysLeft + ' araw pa)') + ' · ' + PLAN[st.plan][1] + (isAdmin() ? ' · ' + esc(agentName(st.agentId)) : '') + '</div>' +
       '<div class="acts"><button class="mini" data-act="renewMsg" data-arg="' + st.sid + '">📋 Paalala sa customer</button>' +
-      (isAdmin() ? '<button class="mini teal" data-act="pay" data-arg="' + st.sid + '">💵 I-record ang bayad</button>' : (req ? '<span class="mini" style="box-shadow:none;background:var(--teal2)">⏳ Hinihintay ang kumpirmasyon</span>' : '<button class="mini teal" data-act="reqRenew" data-arg="' + st.sid + '">✅ Nagbayad na</button>')) + '</div></div></div>';
+      (isAdmin() ? '<button class="mini teal" data-act="pay" data-arg="' + st.sid + '">💵 I-record ang bayad</button>' : ((req || pendClaims().some(c => c.sid === st.sid)) ? '<span class="mini" style="box-shadow:none;background:var(--teal2)">⏳ Hinihintay ang kumpirmasyon</span>' : '<button class="mini teal" data-act="reqRenew" data-arg="' + st.sid + '">✅ Nagbayad na</button>')) + '</div></div></div>';
   }).join('');
 }
 function viewAgentHome() {
@@ -300,11 +301,19 @@ function viewAdminHome() {
   let h = '<div class="grid"><div class="stat big"><div class="lbl">💵 Natanggap ngayong buwan</div><div class="amt" style="font-size:30px">' + peso(inMonth) + '</div><div class="sub">Sa ahente: ' + peso(shareMonth) + ' · Sa iyo: <b>' + peso(inMonth - shareMonth) + '</b></div></div>' +
     '<div class="stat t"><div class="lbl">✅ Bayad</div><div class="amt">' + act.length + '</div><div class="sub">~' + peso(mrr) + '/buwan</div></div>' +
     '<div class="stat g"><div class="lbl">🧪 Trial</div><div class="amt">' + trial.length + '</div><div class="sub">' + stores.length + ' tindahan lahat</div></div></div>';
+  const cl = pendClaims();
+  if (cl.length) h += '<h3>🧾 Nagbayad na raw — galing sa customer (' + cl.length + ')</h3>' + cl.map(c => {
+    const st = stores.find(x => x.sid === c.sid) || { name: c.storeName, plan: c.app };
+    return '<div class="alert" style="background:var(--teal2)"><div class="e">🧾</div><div style="flex:1;min-width:0"><div class="t1">' + esc(st.name) + ' · ' + peso(c.amount) + '</div>' +
+      '<div class="t2">' + PLAN[st.plan][1] + ' · ' + (Number(c.months) === 12 ? '1 taon' : '1 buwan') + ' · ' + pd(c.date) + (st.agentId ? ' · ' + esc(agentName(st.agentId)) : '') + '</div>' +
+      '<div class="t2">Ref: <b>' + esc(c.ref) + '</b>' + (c.payer ? ' · ' + esc(c.payer) : '') + '</div>' +
+      '<div class="acts"><button class="mini" data-act="shot" data-arg="' + esc(c.fileId) + '">📷 Screenshot</button><button class="mini teal" data-act="okClaim" data-arg="' + c.id + '">💵 I-confirm at i-renew</button><button class="mini" data-act="noClaim" data-arg="' + c.id + '">✕ Hindi nakita</button></div></div></div>';
+  }).join('');
   const reqs = openReq();
   if (reqs.length) h += '<h3>🙋 Sabi ng ahente, nagbayad na (' + reqs.length + ')</h3>' + reqs.map(r => { const st = stores.find(x => x.sid === r.sid) || { name: r.sid, plan: 'kw' }; return '<div class="alert"><div class="e">💸</div><div style="flex:1"><div class="t1">' + esc(st.name) + '</div><div class="t2">' + esc(agentName(r.agentId)) + ' · ' + r.months + (r.months == 12 ? ' buwan (1 taon)' : ' buwan') + ' · ' + pd(r.date) + (r.note ? ' · "' + esc(r.note) + '"' : '') + '</div><div class="acts"><button class="mini teal" data-act="pay" data-arg="' + r.sid + '|' + r.months + '">💵 I-record ang bayad</button><button class="mini" data-act="resolve" data-arg="' + r.id + '">✕ Hindi pa</button></div></div></div>'; }).join('');
   h += renewAlerts();
   if (owed.length) h += '<h3>🤝 Babayaran sa ahente</h3>' + owed.map(x => '<div class="alert" style="background:var(--teal2)"><div class="e">💰</div><div style="flex:1"><div class="t1">' + esc(x.a.name) + ' · ' + peso(x.bal) + '</div><div class="t2">' + (x.a.gcash ? 'GCash: ' + esc(x.a.gcash) : 'Walang GCash na nakalagay') + '</div><div class="acts"><button class="mini teal" data-act="payout" data-arg="' + x.a.id + '">✅ Nabayaran ko na</button></div></div></div>').join('');
-  if (!reqs.length && !needRenew().length && !owed.length) h += '<div class="card" style="text-align:center"><div style="font-size:34px">🎉</div><b>Walang kailangang asikasuhin ngayon.</b></div>';
+  if (!cl.length && !reqs.length && !needRenew().length && !owed.length) h += '<div class="card" style="text-align:center"><div style="font-size:34px">🎉</div><b>Walang kailangang asikasuhin ngayon.</b></div>';
   return h;
 }
 function viewStores() {
@@ -348,7 +357,7 @@ function viewSettings() {
   return '<h2>⚙️ Settings</h2><div class="card"><div class="b" style="margin-bottom:10px">💳 Presyo kada buwan</div><div class="row2">' + f('priceKw', '🐃 Kwentoink', 'n') + f('pricePc', '🐱 Puscart', 'n') + f('priceBundle', 'Bundle', 'n') + '</div>' +
     '<div class="b" style="margin:6px 0 10px">📅 Presyo kada taon</div><div class="row2">' + f('annualKw', '🐃 Kwentoink', 'n') + f('annualPc', '🐱 Puscart', 'n') + f('annualBundle', 'Bundle', 'n') + '</div>' +
     '<div class="row2">' + f('commission', 'Hati ng ahente (%)', 'n') + f('refCredit', 'Referral (₱ off)', 'n') + f('trialDays', 'Trial (araw)', 'n') + '</div></div>' +
-    '<div class="card">' + f('gcash', 'GCash number mo (para sa paalala)') + f('gcashName', 'Pangalan sa GCash') + f('bizName', 'Pangalan ng negosyo') + f('adminEmail', 'Email para sa abiso') + '</div>' +
+    '<div class="card">' + f('gcash', 'GCash number mo (lalabas din sa lock screen ng tindahan)') + f('gcashName', 'Pangalan sa GCash') + f('bizName', 'Pangalan ng negosyo') + f('adminEmail', 'Email para sa abiso') + '</div>' +
     '<button class="btn main" data-act="saveSettings" style="margin-bottom:12px">💾 I-save</button>' +
     '<div class="card small b" style="line-height:1.5">ℹ️ Ang "Trial (araw)" dito ay para sa mga tindahang gagawin mula sa portal. Ang mga lumang tindahan ay hindi magbabago.</div>' +
     '<button class="btn soft" data-act="import" style="margin-bottom:10px">📥 Idagdag ang lumang tindahan</button>' + installTip() + '<button class="btn danger" data-act="logout">Mag-logout</button>';
@@ -404,6 +413,39 @@ function paySheet(sid, months0) {
     catch (err) { toast(err.message); b.disabled = false; b.textContent = '✅ I-record at i-renew'; }
   };
   paint();
+}
+function claimSheet(id) {
+  const c = pendClaims().find(x => x.id === id); if (!c) return;
+  const st = D().stores.find(x => x.sid === c.sid) || { name: c.storeName, plan: c.app, paidCount: 1 };
+  let months = Number(c.months) === 12 ? 12 : 1;
+  const el = openSheet('<div class="sheet-head"><h2>💵 I-confirm: ' + esc(st.name) + '</h2><button class="x" data-x>×</button></div>' +
+    '<div class="card small b" style="line-height:1.5">1️⃣ Buksan ang <b>GCash app</b> mo → Transactions.<br>2️⃣ Hanapin ang <b>' + peso(c.amount) + '</b> na may ref <b>' + esc(c.ref) + '</b>.<br>3️⃣ Kung nandoon, pindutin ang <b>✅ Nakita ko</b>. Kusang mabubuksan ulit ang app nila.</div>' +
+    '<button class="btn soft" id="c-shot" style="margin-bottom:10px">📷 Tingnan ang screenshot</button>' +
+    '<div class="seg" id="c-m">' + [1, 12].map(m => '<button data-m="' + m + '">' + (m === 12 ? '1 taon' : '1 buwan') + '</button>').join('') + '</div>' +
+    '<div class="card" id="c-q"></div><button class="btn teal" id="c-ok">✅ Nakita ko, i-renew</button>');
+  const paint = () => {
+    el.querySelectorAll('[data-m]').forEach(b => b.classList.toggle('on', +b.dataset.m === months));
+    const q = quote(st, months);
+    el.querySelector('#c-q').innerHTML = '<div class="kv"><span>Dapat bayaran</span><span>' + peso(q.net) + '</span></div><div class="kv"><span>Sabi ng customer</span><span>' + peso(c.amount) + '</span></div>' +
+      (Math.abs(q.net - Number(c.amount)) > 0.009 ? '<div class="small b" style="color:var(--red);margin-top:6px">⚠️ Iba ang halaga. I-check mabuti bago i-confirm.</div>' : '') +
+      (st.agentId ? '<div class="kv"><span>Para kay ' + esc(agentName(st.agentId)) + '</span><span>' + peso(q.agentShare) + '</span></div>' : '');
+  };
+  el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { months = +b.dataset.m; paint(); });
+  el.querySelector('#c-shot').onclick = () => ACT.shot(c.fileId);
+  el.querySelector('#c-ok').onclick = async e => {
+    const b = e.target; b.disabled = true; b.textContent = 'Sandali…';
+    try { const j = await api('confirmClaim', { id, months }); closeSheet(); toast('✅ Na-renew! Bayad na hanggang ' + pd(j.until)); load(true); }
+    catch (err) { toast(err.message); b.disabled = false; b.textContent = '✅ Nakita ko, i-renew'; }
+  };
+  paint();
+}
+function rejectSheet(id) {
+  const c = pendClaims().find(x => x.id === id); if (!c) return;
+  const el = openSheet('<div class="sheet-head"><h2>✕ Hindi nakita ang bayad</h2><button class="x" data-x>×</button></div>' +
+    '<div class="card small b">Makikita ito ng customer sa lock screen nila para ma-check nila ulit.</div>' +
+    '<div class="field"><label>Mensahe sa customer</label><input class="inp" id="j-note" value="Hindi namin makita ang bayad na may ref ' + esc(c.ref) + '. Paki-check ang ref number at i-send ulit."></div>' +
+    '<button class="btn danger" id="j-ok">Ipadala</button>');
+  el.querySelector('#j-ok').onclick = async e => { e.target.disabled = true; try { await api('rejectClaim', { id, note: el.querySelector('#j-note').value }); closeSheet(); toast('Naipadala sa customer'); load(true); } catch (err) { toast(err.message); e.target.disabled = false; } };
 }
 function reqSheet(sid) {
   const st = D().stores.find(x => x.sid === sid); let months = 1;
@@ -494,6 +536,8 @@ const ACT = {
   store: sid => storeSheet(sid), filter: f => { S.filter = f; render(); },
   renewMsg: sid => msgSheet(renewMsg(D().stores.find(x => x.sid === sid)), '📋 Paalala sa renew'),
   reqRenew: sid => reqSheet(sid), pay: arg => { const [sid, m] = String(arg).split('|'); paySheet(sid, m); },
+  shot: fid => { if (fid) window.open('https://drive.google.com/file/d/' + fid + '/view', '_blank'); },
+  okClaim: id => claimSheet(id), noClaim: id => rejectSheet(id),
   resolve: async id => { try { await api('resolveRequest', { id }); toast('Tinanggal'); load(true); } catch (e) { toast(e.message); } },
   payout: id => payoutSheet(id), agent: id => agentSheet(id), addAgent: () => agentForm(),
   saveSettings: async () => { const s = {}; $$('[data-s]').forEach(i => s[i.dataset.s] = i.value); try { const j = await api('saveSettings', { settings: s }); S.data.settings = j.settings; toast('Na-save ang settings! 💾'); } catch (e) { toast(e.message); } },
