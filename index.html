@@ -187,7 +187,8 @@ function priceOf(plan, months) {
 function quote(st, months) {
   const s = D().settings || {}, gross = priceOf(st.plan, months), monthly = priceOf(st.plan, 1);
   const first = !st.paidCount; const refDiscount = first && st.referredBy ? Math.min(Number(s.refCredit) || 0, gross) : 0;
-  const creditUsed = Math.min(Number(st.credit) || 0, monthly, gross - refDiscount);
+  const cap = (Number(s.creditCap) || monthly) * months;
+  const creditUsed = Math.max(0, Math.min(Number(st.credit) || 0, cap, gross - refDiscount));
   const net = Math.round((gross - refDiscount - creditUsed) * 100) / 100;
   return { gross, refDiscount, creditUsed, net, agentShare: st.agentId ? Math.round(net * (Number(s.commission) || 0)) / 100 : 0 };
 }
@@ -356,7 +357,7 @@ function viewSettings() {
   const s = D().settings, f = (k, l, t) => '<div class="field"><label>' + l + '</label><input class="inp" data-s="' + k + '" ' + (t === 'n' ? 'inputmode="decimal"' : '') + ' value="' + esc(s[k]) + '"></div>';
   return '<h2>⚙️ Settings</h2><div class="card"><div class="b" style="margin-bottom:10px">💳 Presyo kada buwan</div><div class="row2">' + f('priceKw', '🐃 Kwentoink', 'n') + f('pricePc', '🐱 Puscart', 'n') + f('priceBundle', 'Bundle', 'n') + '</div>' +
     '<div class="b" style="margin:6px 0 10px">📅 Presyo kada taon</div><div class="row2">' + f('annualKw', '🐃 Kwentoink', 'n') + f('annualPc', '🐱 Puscart', 'n') + f('annualBundle', 'Bundle', 'n') + '</div>' +
-    '<div class="row2">' + f('commission', 'Hati ng ahente (%)', 'n') + f('refCredit', 'Referral (₱ off)', 'n') + f('trialDays', 'Trial (araw)', 'n') + '</div></div>' +
+    '<div class="row2">' + f('commission', 'Hati ng ahente (%)', 'n') + f('refCredit', 'Referral (₱ off)', 'n') + f('trialDays', 'Trial (araw)', 'n') + '</div>' + f('creditCap', 'Max na bawas ng referral credit kada buwan (₱)', 'n') + '</div>' +
     '<div class="card">' + f('gcash', 'GCash number mo (lalabas din sa lock screen ng tindahan)') + f('gcashName', 'Pangalan sa GCash') + f('bizName', 'Pangalan ng negosyo') + f('adminEmail', 'Email para sa abiso') + '</div>' +
     '<button class="btn main" data-act="saveSettings" style="margin-bottom:12px">💾 I-save</button>' +
     '<div class="card small b" style="line-height:1.5">ℹ️ Ang "Trial (araw)" dito ay para sa mga tindahang gagawin mula sa portal. Ang mga lumang tindahan ay hindi magbabago.</div>' +
